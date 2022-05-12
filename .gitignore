@@ -1,0 +1,4 @@
+__pycache__/
+weathervenv/
+config.py
+main.py

@@ -1,13 +1,16 @@
 from create_bot import dp, bot
 from aiogram import types
+from aiogram.dispatcher import Dispatcher
 from config import open_weather_token
+from keyboards import kb_weather
 
 import datetime
 import requests
 
-@dp.message_handler()
-async def get_weather(message: types.Message):
+async def get_city(message : types.Message):
+	await bot.send_message(message.from_user.id, "Введите название города")
 
+async def get_weather(message : types.Message):
 	# Библиотека смйлов
 	code_to_smile = {
         "Clear": "☀ Ясно",
@@ -50,3 +53,7 @@ async def get_weather(message: types.Message):
 		await message.reply(final)
 	except:
 		await message.reply("🔴 Проверьте название города 🔴")
+
+def register_handlers_weather(dp : Dispatcher):
+	dp.register_message_handler(get_city, lambda message: 'Город' in message.text)
+	dp.register_message_handler(get_weather)

@@ -1,26 +1,27 @@
-from create_bot import dp, bot
+import time
+import schedule
+from multiprocessing.context import Process
+from aiogram import Dispatcher
 from aiogram import types
-from aiogram.dispatcher import Dispatcher
-#from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from create_bot import bot
+#from handlers.weather import get_weather
 
-# scheduler_start = AsyncIOScheduler()
+async def get_base_city(message: types.Message):
+    await bot.send_message(message.from_user.id, "Введите название города")
+    #global city
+    city = message.text
+    #schedule.every().seconds(3).do(get_weather)
+#    schedule.every().day.at("08:00").do(get_weather)
 
-# ID = None
+class ScheduleMessage():
+    def try_send_schedule(self):
+        while True:
+            schedule.run_pending()
+            time.sleep(1)
 
-# async def test_message(dp : Dispatcher):
-# 	await dp.bot.send_message(chat_id=ID, text="HI")
+    def start_process(self):
+        p1 = Process(target=ScheduleMessage.try_send_schedule, args=())
+        p1.start()
 
-# @dp.message_handler(commands=["timer"])
-# async def timer_command(message: types.Message):
-# 	global ID
-# 	ID = message.from_user.id
-# 	await bot.send_message(message.from_user.id, "Ведите название города")
-# 	@dp.message_handler()
-# def schedule_job():
-# 	scheduler_start.add_job(test_message, 'cron', hour=6, timezone='Asia/Yekaterinburg', start_date=datetime.now(), args=(dp,))
-# 	# scheduler_start.add_job(test_message, "interval",seconds=5, 
-# 	# 												#start_date='2022-05-13 06:00:00',
-# 	# 												timezone='Asia/Yekaterinburg', 
-# 	# 												args=(dp,))
-# schedule_job()
-
+def register_handlers_client(dp : Dispatcher):
+    dp.register_message_handler(get_base_city, lambda message: 'Погода каждое утро' in message.text)

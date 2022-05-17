@@ -1,6 +1,6 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
-b1 = KeyboardButton('Город')
+b1 = KeyboardButton('Погода каждое утро')
 
 kb_weather = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
 

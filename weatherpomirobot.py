@@ -2,16 +2,14 @@ import psycopg2
 import requests
 import datetime
 from config import open_weather_token
-from aiogram import types, Dispatcher
+from aiogram import types
 from aiogram.utils import executor
 from create_bot import dp, bot
-from handlers import weather, base
-from handlers.scheduler import ScheduleMessage
+from handlers import base
 from config import db_name, db_user, db_password, db_host, db_port
-from psycopg2 import OperationalError
-import time
-import schedule
-from multiprocessing.context import Process
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+scheduler = AsyncIOScheduler()
 
 connection = psycopg2.connect(
     database=db_name,
@@ -21,13 +19,12 @@ connection = psycopg2.connect(
     port=db_port,
     sslmode='require')
 
-
 @dp.message_handler(lambda message: 'Погода каждое утро' in message.text)
 async def get_city(message: types.Message):
     await bot.send_message(message.from_user.id, "Введите название города")
 
+
 def get_weather(city):
-    print(1)
     # Библиотека смйлов
     code_to_smile = {
         "Clear": "☀ Ясно",
@@ -68,67 +65,50 @@ def get_weather(city):
         final = final + text
     return final
 
-def morning_push():
-    print(2)
+async def morning_push():
     cursor = connection.cursor()
     cursor.execute("SELECT user_id, city from morning_weather")
     rows = cursor.fetchall()
     for row in rows:
         user_id = row[0],
         city = row[1],
-    text = get_weather(city)
+        text = str(f"Погода в городе {city[0]}:\n{get_weather(city)}")
+        print(user_id[0])
+        await bot.send_message(chat_id=user_id[0], text=text)
     cursor.close()
-    return [user_id, text]
+
+scheduler.add_job(morning_push,
+                  "cron",
+                  hour=6,
+                  minute=0,
+                  start_date='2022-05-13 06:00:00',
+                  timezone='Asia/Yekaterinburg',
+                  )
 
 @dp.message_handler()
 async def get_query(message: types.Message):
-    print(3)
     connection.autocommit = True
     cursor = connection.cursor()
-    try:
-        cursor.execute("INSERT INTO morning_weather VALUES (%s, %s)", (message.from_user.id, message.text))
-    except:
-        cursor.execute("UPDATE morning_weather set city = (%s) where user_id = (%s)",
-                       (message.text, message.from_user.id))
+    if len(requests.get(f"http://api.openweathermap.org/geo/1.0/direct?q={message.text}"
+                        f"&limit=5&appid={open_weather_token}").json()) != 0:
+        try:
+            cursor.execute("INSERT INTO morning_weather VALUES (%s, %s)", (message.from_user.id, message.text))
+        except:
+            cursor.execute("UPDATE morning_weather set city = (%s) where user_id = (%s)",
+                           (message.text, message.from_user.id))
+        await bot.send_message(message.from_user.id, "Каждый день в 06:00 вам будет приходить прогноз погоды 🙂")
+    else:
+        await message.reply("🔴 Проверьте название города 🔴")
     connection.commit()
     cursor.close()
-    data = morning_push()
-    chat_id = str(data[0][0])
-    text = str(data[1])
-    await bot.send_message(chat_id=chat_id, text=text)
-
-
-# def job():
-#     print('test')
-
-
-# schedule.every().day.at("08:00").do(morning_push)
-# schedule.every(3).minutes.do(morning_push)
-#
-#
-# class ScheduleMessage():
-#     def try_send_schedule():
-#         while True:
-#             schedule.run_pending()
-#             time.sleep(1)
-#
-#     def start_process():
-#         p1 = Process(target=ScheduleMessage.try_send_schedule, args=())
-#         p1.start()
-
 
 async def on_startup(_):
     print('Bot online')
-
 
 async def on_shutdown(_):
     print('Bot offline')
     connection.close()
 
-
-# def register_handlers_weather(dp: Dispatcher):
-#     dp.register_message_handler(get_city, lambda message: 'Погода каждое утро' in message.text)
-
 if __name__ == '__main__':
-    # ScheduleMessage.start_process()
+    scheduler.start()
     executor.start_polling(dp, skip_updates=True, on_startup=on_startup, on_shutdown=on_shutdown)

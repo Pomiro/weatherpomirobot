@@ -8,10 +8,11 @@ from create_bot import dp, bot
 from handlers import base
 from config import db_name, db_user, db_password, db_host, db_port
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from keyboards import kb_cancel
 
-scheduler = AsyncIOScheduler()
+scheduler = AsyncIOScheduler()  # run scheduler
 
-connection = psycopg2.connect(
+connection = psycopg2.connect(  # connect to PostgreSQL
     database=db_name,
     user=db_user,
     password=db_password,
@@ -21,12 +22,23 @@ connection = psycopg2.connect(
 
 @dp.message_handler(lambda message: 'Погода каждое утро' in message.text)
 async def get_city(message: types.Message):
-    await bot.send_message(message.from_user.id, "Введите название города")
+    await bot.send_message(message.from_user.id, "Введите название города", reply_markup=kb_cancel)
 
+@dp.message_handler(lambda message: 'Отмена отправки погоды' in message.text)
+async def cancel(message: types.Message):
+    await bot.send_message(message.from_user.id, "Прогноз погоды больше не будет приходить по утрам")
+    connection.autocommit = True
+    cursor = connection.cursor()
+    cursor.execute(f"DELETE from morning_weather where user_id={message.from_user.id}")
+    cursor.close()
 
 def get_weather(city):
-    # Библиотека смйлов
-    code_to_smile = {
+    """
+    When sending city, sends weather for 16 hours
+    :param: city
+    :return: final (string with weather)
+    """
+    code_to_smile = {  # emoji lib
         "Clear": "☀ Ясно",
         "Clouds": "☁ Облачно",
         "Rain": "☔ Дождь",
@@ -35,16 +47,15 @@ def get_weather(city):
         "Snow": "❄ Снег",
         "Mist": "🌫 Туман"
     }
-    # Отправка запроса на сервер для получения координат города
-    loc = requests.get(
+    loc = requests.get(  # get request from server with city location
         f"http://api.openweathermap.org/geo/1.0/direct?q={city}&limit=5&appid={open_weather_token}"
     )
-    loc = loc.json()
+    loc = loc.json()   # read replay in json
 
     lat = loc[0]['lat']
     lon = loc[0]['lon']
 
-    r = requests.get(
+    r = requests.get(  # get request from server with weather
         f'https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&exclude=current,minutely,daily'
         f'&appid={open_weather_token}&units=metric&lang=ru'
     )
@@ -66,6 +77,9 @@ def get_weather(city):
     return final
 
 async def morning_push():
+    """
+    Sends weather to user
+    """
     cursor = connection.cursor()
     cursor.execute("SELECT user_id, city from morning_weather")
     rows = cursor.fetchall()
@@ -73,7 +87,6 @@ async def morning_push():
         user_id = row[0],
         city = row[1],
         text = str(f"Погода в городе {city[0]}:\n{get_weather(city)}")
-        print(user_id[0])
         await bot.send_message(chat_id=user_id[0], text=text)
     cursor.close()
 
@@ -89,17 +102,16 @@ scheduler.add_job(morning_push,
 async def get_query(message: types.Message):
     connection.autocommit = True
     cursor = connection.cursor()
-    if len(requests.get(f"http://api.openweathermap.org/geo/1.0/direct?q={message.text}"
+    if len(requests.get(f"http://api.openweathermap.org/geo/1.0/direct?q={message.text}"  # check city
                         f"&limit=5&appid={open_weather_token}").json()) != 0:
-        try:
+        try:  # if it is new user, insert his data
             cursor.execute("INSERT INTO morning_weather VALUES (%s, %s)", (message.from_user.id, message.text))
-        except:
+        except:  # if it is not a new, update his data
             cursor.execute("UPDATE morning_weather set city = (%s) where user_id = (%s)",
                            (message.text, message.from_user.id))
         await bot.send_message(message.from_user.id, "Каждый день в 06:00 вам будет приходить прогноз погоды 🙂")
     else:
         await message.reply("🔴 Проверьте название города 🔴")
-    connection.commit()
     cursor.close()
 
 async def on_startup(_):
